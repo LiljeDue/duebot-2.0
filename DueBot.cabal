@@ -1,0 +1,60 @@
+cabal-version:      3.0
+name:               DueBot
+version:            0.1.0.0
+-- synopsis:
+-- description:
+license:            MIT
+license-file:       LICENSE
+author:             Due
+maintainer:         williamhenrichdue@gmail.com
+-- copyright:
+category:           Web
+build-type:         Simple
+extra-doc-files:    CHANGELOG.md
+extra-source-files:
+        
+common common
+    ghc-options: -Wall    
+    default-language: GHC2021
+    default-extensions:
+        OverloadedStrings
+        TemplateHaskell
+        NoImplicitPrelude
+
+library
+    import: common
+    exposed-modules:
+        DueBot.SmallTalk.Parser
+        DueBot.SmallTalk.Compiler
+        DueBot.EventHandler
+        DueBot.Main
+    build-depends:
+        base,
+        discord-haskell,
+        unliftio,
+        file-embed,
+        relude,
+        megaparsec,
+        regex,
+        array,
+        template-haskell,
+        random
+    hs-source-dirs:   src
+
+executable duebot
+    import:           common
+    main-is:          Main.hs
+    build-depends:
+        base,
+        relude,
+        DueBot
+    hs-source-dirs:   app
+
+test-suite DueBot-test
+    import:           common
+    type:             exitcode-stdio-1.0
+    hs-source-dirs:   test
+    main-is:          Main.hs
+    build-depends:
+        base,
+        DueBot

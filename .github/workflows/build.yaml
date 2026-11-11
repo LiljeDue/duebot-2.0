@@ -1,0 +1,137 @@
+name: Build Binaries
+
+on:
+  push:
+    branches: [ main ]
+  pull_request: 
+    branches: [ main ]
+
+jobs:
+  build-x86_64:
+    name: Build x86_64
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses:  actions/checkout@v4
+
+    - name: Set up Haskell
+      uses: haskell-actions/setup@v2
+      with:
+        ghc-version: '9.8'
+        cabal-version: '3.14'
+
+    - name: Cache Cabal packages
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cabal/packages
+          ~/.cabal/store
+          dist-newstyle
+        key: linux-x86_64-cabal-${{ hashFiles('**/*.cabal', '**/cabal.project') }}
+        restore-keys: |
+          linux-x86_64-cabal-
+
+    - name: Update Cabal package list
+      run: cabal update
+
+    - name: Build dependencies
+      run: cabal build --only-dependencies
+
+    - name:  Build project
+      run: cabal build
+
+    - name: Find executable
+      id: find-exe
+      run: |
+        EXE_PATH=$(cabal list-bin duebot)
+        echo "exe_path=$EXE_PATH" >> $GITHUB_OUTPUT
+        echo "Found executable at: $EXE_PATH"
+
+    - name: Create artifact directory
+      run: mkdir -p artifacts
+
+    - name: Copy binary
+      run: |
+        cp ${{ steps.find-exe.outputs.exe_path }} artifacts/duebot-linux-x86_64
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:  
+        name: duebot-linux-x86_64
+        path: artifacts/duebot-linux-x86_64
+
+  build-arm64:
+    name: Build ARM64
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Cache Cabal packages (ARM64)
+      uses: actions/cache@v3
+      with: 
+        path: |
+          cabal-cache
+        key: linux-arm64-cabal-${{ hashFiles('**/*.cabal', '**/cabal.project') }}
+        restore-keys: |
+          linux-arm64-cabal-
+
+    - name: Build ARM64 binary in Docker
+      run: |
+        mkdir -p cabal-cache
+        docker run --platform linux/arm64 \
+          -v ${{ github.workspace }}:/workspace \
+          -v ${{ github.workspace }}/cabal-cache:/root/.cabal \
+          -w /workspace \
+          haskell:9.8 \
+          bash -c "
+            cabal update && \
+            cabal build && \
+            mkdir -p artifacts && \
+            cp \$(cabal list-bin duebot) artifacts/duebot-linux-arm64
+          "
+
+    - name: Upload ARM64 artifact
+      uses: actions/upload-artifact@v4
+      with: 
+        name: duebot-linux-arm64
+        path:  artifacts/duebot-linux-arm64
+
+  release:
+    name: Create Release
+    needs:  [build-x86_64, build-arm64]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+    
+    steps: 
+    - uses: actions/checkout@v4
+    
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: release-artifacts
+    
+    - name: Display structure of downloaded files
+      run: ls -R release-artifacts
+    
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with: 
+        tag_name: latest
+        name: Latest Release
+        draft:  false
+        prerelease: false
+        files: |
+          release-artifacts/duebot-linux-x86_64/duebot-linux-x86_64
+          release-artifacts/duebot-linux-arm64/duebot-linux-arm64
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
